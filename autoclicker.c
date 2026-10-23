@@ -8,6 +8,7 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -17,6 +18,18 @@
 
 static char dir[256], pid_path[300], speed_path[300];
 static volatile sig_atomic_t reload, quit;
+
+static void notify_send(const char *summary, const char *body)
+{
+	pid_t child = fork();
+	if (child == 0) {
+		execlp("notify-send", "notify-send", summary, body, (char *)NULL);
+		_exit(127);
+	}
+	if (child > 0)
+		while (waitpid(child, NULL, 0) < 0 && errno == EINTR)
+			;
+}
 
 static void init_paths(void)
 {
@@ -123,6 +136,9 @@ static int daemon_loop(void)
 	signal(SIGUSR1, on_usr1);
 	signal(SIGTERM, on_term);
 	signal(SIGINT, on_term);
+	char message[64];
+	snprintf(message, sizeof message, "Started at %ld clicks per second", cps);
+	notify_send("Autoclicker", message);
 
 	/* Give the compositor time to pick up the new device. */
 	nanosleep(&(struct timespec){0, 300000000L}, NULL);
@@ -146,6 +162,7 @@ static int daemon_loop(void)
 	ioctl(fd, UI_DEV_DESTROY);
 	close(fd);
 	unlink(pid_path);
+	notify_send("Autoclicker", "Stopped");
 	return 0;
 }
 
@@ -194,6 +211,13 @@ static int cmd_end(void)
 	return 0;
 }
 
+static int cmd_toggle(void)
+{
+	if (running_pid())
+		return cmd_end();
+	return cmd_start();
+}
+
 static int cmd_speed(const char *arg, int add)
 {
 	char *end;
@@ -210,6 +234,9 @@ static int cmd_speed(const char *arg, int add)
 	if (p)
 		kill(p, SIGUSR1);
 	printf("speed: %ld CPS%s\n", v, p ? "" : " (not running)");
+	char message[64];
+	snprintf(message, sizeof message, "Speed changed to %ld clicks per second", v);
+	notify_send("Autoclicker", message);
 	return 0;
 }
 
@@ -225,7 +252,7 @@ static int cmd_status(void)
 
 static int usage(void)
 {
-	fprintf(stderr, "usage: autoclicker start | end | status | speed-add <n> | speed-set <n>\n");
+	fprintf(stderr, "usage: autoclicker toggle | status | speed-add <n> | speed-set <n>\n");
 	return 1;
 }
 
@@ -234,10 +261,8 @@ int main(int argc, char **argv)
 	const char *c = argc > 1 ? argv[1] : "";
 	init_paths();
 
-	if (!strcmp(c, "start"))
-		return cmd_start();
-	if (!strcmp(c, "end"))
-		return cmd_end();
+	if (!strcmp(c, "toggle"))
+		return cmd_toggle();
 	if (!strcmp(c, "status"))
 		return cmd_status();
 	if (!strcmp(c, "speed-add") && argc == 3)

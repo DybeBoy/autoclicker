@@ -25,11 +25,12 @@ Then log in again.
 ## Usage
 
 ```sh
-autoclicker start         # start clicking (10 clicks/s)
-autoclicker end           # stop
+autoclicker toggle        # start or stop clicking (10 clicks/s on first start)
 autoclicker speed-add 10  # add 10 clicks/s (works with negative values too (-10))
 autoclicker speed-set 20  # set clicks/s directly
 autoclicker status
 ```
 
 Speed is clamped to 1-100 clicks per second.
+
+If `notify-send` is installed, the autoclicker sends desktop notifications when it starts, stops, or its speed changes. Notifications are optional; the autoclicker works without `notify-send`.
